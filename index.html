@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explorando o Chile em 3D</title>
+
+    <!-- ======================= ESTILOS (CSS) =========================== -->
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #1a1a2a; /* Fallback color */
+            color: #f0f0f0;
+            overflow: hidden;
+        }
+
+        #bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            outline: none;
+            cursor: grab;
+        }
+        #bg:grabbing { cursor: grabbing; }
+
+        /* --- Menu Inicial --- */
+        #start-menu-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(26, 26, 42, 0.9);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            text-align: center;
+            color: #f0f0f0;
+            backdrop-filter: blur(8px);
+            transition: opacity 0.7s ease;
+        }
+        #start-menu-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #start-menu-overlay h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            color: #a9d2ff;
+        }
+        #start-menu-overlay h2 {
+            font-size: 1.2rem;
+            margin-bottom: 40px;
+            font-weight: 400;
+        }
+        .menu-buttons button {
+            background-color: #4a69bd;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s;
+            font-size: 1.1rem;
+            margin: 0 15px;
+        }
+        .menu-buttons button:hover {
+            background-color: #6a89cc;
+            transform: translateY(-2px);
+        }
+
+        /* --- UI de Interação (Modo Pessoa) --- */
+        #interaction-prompt {
+            position: fixed;
+            bottom: 5%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(20, 20, 35, 0.85);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 25px;
+            border: 1px solid #4a4a6a;
+            font-size: 1rem;
+            z-index: 20;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+        #interaction-prompt.visible {
+            opacity: 1;
+        }
+        #reticle { /* Ponteiro central */
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 8px;
+            height: 8px;
+            background-color: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 20;
+            display: none; /* Começa escondido */
+        }
+
+        /* --- Estilo Genérico para Painéis de Informação --- */
+        .info-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 900px;
+            max-height: 90vh;
+            overflow-y: auto;
+            background-color: rgba(20, 20, 35, 0.95);
+            border: 1px solid #4a4a6a;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 10;
+            opacity: 1;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        .info-panel.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: translate(-50%, -50%) scale(0.9);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            background: none;
+            border: none;
+            color: #f0f0f0;
+            font-size: 2.5rem;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .info-content { display: flex; padding: 30px 40px; gap: 30px; }
+        .info-left { flex: 1; text-align: center; }
+        .info-left img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 15px; background-color: #fff; }
+        .info-left h3 { margin-top: 0; color: #a9d2ff; }
+        .info-right { flex: 2; display: flex; flex-direction: column; }
+        .info-right h4 { font-size: 1.4rem; color: #a9d2ff; border-bottom: 2px solid #4a4a6a; padding-bottom: 10px; margin-top: 0; }
+        .info-right p { line-height: 1.6; font-size: 1rem; }
+        .slideshow-container .slide img { max-width: 100%; height: auto; border-radius: 8px; margin: 10px 0 15px 0; }
+        .slideshow-container .slide { display: none; }
+        .slideshow-container .slide.active { display: block; animation: fadeIn 0.5s; }
+        .slide-controls { margin-top: auto; padding-top: 15px; display: flex; justify-content: space-between; }
+        .slide-controls button { background-color: #4a69bd; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; transition: background-color 0.3s; }
+        .slide-controls button:hover { background-color: #6a89cc; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        @media (max-width: 768px) {
+            #start-menu-overlay h1 { font-size: 2rem; }
+            .menu-buttons { display: flex; flex-direction: column; gap: 15px; }
+            .info-content { flex-direction: column; padding: 25px; }
+            .info-right { min-height: 350px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- ===================== CONTEÚDO (HTML) =========================== -->
+    <div id="start-menu-overlay">
+        <div class="menu-content">
+            <h1>Explorando o Chile em 3D</h1>
+            <h2>Crédito: Miguel e Gabriel</h2>
+            <div class="menu-buttons">
+                <button id="spectator-mode-btn">Modo Espectador</button>
+                <button id="person-mode-btn">Modo Pessoa (Estilo Minecraft)</button>
+            </div>
+        </div>
+    </div>
+    <div id="interaction-prompt">Pressione [E] para Interagir</div>
+    <div id="reticle"></div>
+    <canvas id="bg"></canvas>
+    <!-- PAINEL 1: POLÍTICA -->
+    <div id="politics-panel" class="info-panel hidden"><button id="close-politics-btn" class="close-btn">×</button><div class="info-content"><div class="info-left"><img src="https://i.imgur.com/6MR1a7U.png" alt="Brasão de Armas do Chile"><h3>O Governo do Chile</h3><p>O Chile é uma <strong>república democrática presidencialista</strong> com poderes de Estado independentes para garantir equilíbrio e fiscalização.</p></div><div class="info-right"><div class="slideshow-container"><div class="slide active"><h4>Poder Executivo</h4><p>Exercido pelo <strong>Presidente da República</strong>, chefe de Estado e de governo. A sede é o <strong>Palácio de La Moneda</strong>.</p></div><div class="slide"><h4>Poder Legislativo</h4><p>Reside no <strong>Congresso Nacional</strong>, bicameral, composto pelo Senado e pela Câmara de Deputadas e Deputados.</p></div><div class="slide"><h4>Poder Judiciário</h4><p>Liderado pela <strong>Corte Suprema de Justiça</strong>, é um órgão independente encarregado de administrar a justiça no país.</p></div><div class="slide"><h4>Situação Política Atual</h4><img src="https://i.imgur.com/EfySpZR.jpeg" alt="Protestos sociais no Chile"><p>Após os <strong>protestos de 2019</strong>, o país busca focar nos desafios sociais com a Constituição vigente, mantendo o debate sobre reformas.</p></div></div><div class="slide-controls"><button id="prev-btn">« Anterior</button><button id="next-btn">Próximo »</button></div></div></div></div>
+    <!-- PAINEL 2: ECONOMIA -->
+    <div id="economy-panel" class="info-panel hidden"><button id="close-economy-btn" class="close-btn">×</button><div class="info-content"><div class="info-left"><img src="https://i.imgur.com/rdb8m4e.jpeg" alt="Mineração de Cobre nos Andes"><h3>A Economia do Chile</h3><p>Considerada uma das mais estáveis da América Latina, a economia chilena é baseada em um modelo de mercado aberto e focado na exportação.</p></div><div class="info-right"><h4>Pilares Econômicos</h4><p><strong>Mineração:</strong> O Chile é o maior produtor mundial de <strong>cobre</strong> e líder na produção de <strong>lítio</strong>.</p><p><strong>Agricultura:</strong> Famoso por seus <strong>vinhos</strong>, também exporta frutas como uvas, maçãs e mirtilos.</p><h4>Cenário Atual</h4><p>Enfrenta desafios como a desigualdade social e a inflação, mas continua atrativo para investimentos estrangeiros.</p></div></div></div>
+    <!-- PAINEL 3: GEOGRAFIA & POPULAÇÃO -->
+    <div id="geography-panel" class="info-panel hidden"><button id="close-geography-btn" class="close-btn">×</button><div class="info-content"><div class="info-left"><img src="https://i.imgur.com/gS2J0b5.jpeg" alt="Torres del Paine, geografia chilena"><h3>Geografia e População</h3><p>Um país de extremos, definido pela Cordilheira dos Andes a leste e o Oceano Pacífico a oeste, criando uma diversidade única de paisagens.</p></div><div class="info-right"><h4>Relevo e Clima</h4><p>O relevo é dominado pela <strong>Cordilheira dos Andes</strong>. O clima varia do árido (Deserto do Atacama) ao mediterrâneo e frio com geleiras no sul.</p><h4>População e Cidades</h4><p>Com cerca de <strong>19,6 milhões</strong> de habitantes, a população se concentra na região central. A capital, <strong>Santiago</strong>, é a maior metrópole.</p></div></div></div>
+    <!-- PAINEL 4: CULTURA -->
+    <div id="culture-panel" class="info-panel hidden"><button id="close-culture-btn" class="close-btn">×</button><div class="info-content"><div class="info-left"><img src="https://i.imgur.com/8Qp2o7Y.jpeg" alt="Casal dançando Cueca, a dança nacional do Chile"><h3>Curiosidades Culturais</h3><p>A cultura chilena é uma rica mistura de influências indígenas, principalmente mapuche, e tradições coloniais espanholas.</p></div><div class="info-right"><h4>Festas Pátrias</h4><p>A maior celebração ocorre em <strong>18 de setembro</strong>, o "Dieciocho". As cidades se enchem de "fondas" (quiosques com comida e música) onde se dança a <strong>Cueca</strong>, a dança nacional, e se fazem churrascos (asados).</p><h4>Comidas Típicas</h4><p>Pratos icônicos incluem as <strong>empanadas de pino</strong> (carne moída), o <strong>pastel de choclo</strong> (torta de milho com carne) e uma imensa variedade de frutos do mar frescos.</p></div></div></div>
+    <!-- PAINEL 5: LOCALIZAÇÃO -->
+    <div id="location-panel" class="info-panel hidden"><button id="close-location-btn" class="close-btn">×</button><div class="info-content"><div class="info-left"><img src="https://i.imgur.com/w2Y4i6m.png" alt="Mapa da América do Sul com Chile destacado"><h3>Localização Estratégica</h3><p>Situado no sudoeste da América do Sul, o Chile possui uma geografia única que lhe confere vantagens econômicas e uma rica biodiversidade.</p></div><div class="info-right"><h4>Fronteiras e Oceano</h4><p>O país faz fronteira com <strong>Peru</strong> ao norte, <strong>Bolívia</strong> a nordeste e <strong>Argentina</strong> a leste. Sua extensa costa é banhada pelo <strong>Oceano Pacífico</strong>, fundamental para o comércio e a pesca.</p><h4>Território Insular</h4><p>O Chile também inclui territórios insulares no Pacífico, como a famosa <strong>Ilha de Páscoa</strong> (Rapa Nui), o Arquipélago Juan Fernández e as Ilhas Desventuradas.</p></div></div></div>
+
+    <!-- ====================== SCRIPT (JAVASCRIPT) ====================== -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // --- Variáveis Globais de Cena ---
+        let scene, camera, renderer, controls, directionalLight, clock;
+        let palace, bench, mountain, cultureGroup, locationMap;
+        let allInteractiveObjects = [];
+        const originalCameraPos = new THREE.Vector3(0, 35, 110);
+        const raycaster = new THREE.Raycaster();
+        const pointer = new THREE.Vector2();
+        const pointerDownPos = new THREE.Vector2(); 
+
+        // --- Variáveis de Controle e Estado ---
+        let currentMode = null;
+        let panelIsOpen = false;
+        let keys = {};
+        
+        // --- Constantes Modo Pessoa ---
+        const PLAYER_EYE_HEIGHT = 5.0; // Altura dos "olhos" do jogador
+        const PLAYER_SPEED = 20.0;
+        const JUMP_VELOCITY = 15.0;
+        const GRAVITY = 35.0;
+        const INTERACTION_DISTANCE = 30.0;
+        
+        // --- Variáveis Físicas Modo Pessoa ---
+        let playerVelocity = new THREE.Vector3();
+        let onGround = false;
+
+        function init() {
+            clock = new THREE.Clock();
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0xaaccff, 150, 400);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.copy(originalCameraPos);
+            
+            const canvas = document.querySelector('#bg');
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            
+            const ambientLight = new THREE.AmbientLight(0xbbeeff, 0.8);
+            scene.add(ambientLight);
+            
+            directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+            directionalLight.position.set(60, 60, 40);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.top = 90; directionalLight.shadow.camera.bottom = -90;
+            directionalLight.shadow.camera.left = -90; directionalLight.shadow.camera.right = 90;
+            scene.add(directionalLight);
+
+            createSceneElements();
+            setupEventListeners();
+            animate();
+        }
+
+        // --- Funções de Criação de Modelos ---
+        function createSceneElements() {
+            const groundGeo = new THREE.PlaneGeometry(500, 500);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x8BC34A, roughness: 1.0 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+            scene.add(ground);
+
+            createSky(); createStreets(); createPalace(); createBench();
+            createMountain(); createCultureGroup(); createLocationMap();
+        }
+        
+        function createSky() {
+            const textureLoader = new THREE.TextureLoader();
+            const skyTexture = textureLoader.load('https://i.imgur.com/kS9Gj1n.jpg');
+            const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+            const skyMaterial = new THREE.MeshBasicMaterial({ map: skyTexture, side: THREE.BackSide });
+            scene.add(new THREE.Mesh(skyGeometry, skyMaterial));
+        }
+
+        function createStreets() {
+            const roadY=0.01, markY=0.02; const roadM=new THREE.MeshStandardMaterial({color:0x444444,roughness:0.9}), yelM=new THREE.MeshStandardMaterial({color:0xFFEB3B}), whtM=new THREE.MeshStandardMaterial({color:0xE0E0E0});
+            const mr=new THREE.Mesh(new THREE.PlaneGeometry(25,400),roadM); mr.rotation.x=-Math.PI/2; mr.position.y=roadY; mr.receiveShadow=true; scene.add(mr);
+            const dg=new THREE.PlaneGeometry(0.6,5); for(let z=-195;z<=195;z+=12){ const d=new THREE.Mesh(dg,yelM); d.rotation.x=-Math.PI/2; d.position.set(0,markY,z); scene.add(d); }
+            const sr=new THREE.Mesh(new THREE.PlaneGeometry(250,25),roadM); sr.rotation.x=-Math.PI/2; sr.position.y=roadY; sr.position.z=40; sr.receiveShadow=true; scene.add(sr);
+            const sdg=new THREE.PlaneGeometry(5,0.6); for(let x=-120;x<=120;x+=12){ if(x>-15&&x<15) continue; const d=new THREE.Mesh(sdg,yelM); d.rotation.x=-Math.PI/2; d.position.set(x,markY,40); scene.add(d); }
+            const stg=new THREE.PlaneGeometry(2,10); for(let x=-10;x<=10;x+=4){ const st=new THREE.Mesh(stg,whtM); st.rotation.x=-Math.PI/2; st.position.set(x,markY,25); scene.add(st); }
+        }
+
+        function createPalace() {
+            palace=new THREE.Group(); const m=new THREE.MeshStandardMaterial({color:0xd8d8d8,roughness:0.9}); const w=40,h=12,d=18;
+            const mn=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); mn.position.y=h/2; mn.castShadow=true; palace.add(mn);
+            const b=new THREE.Mesh(new THREE.BoxGeometry(w+4,1.5,d+4),m); b.position.y=0.75; b.castShadow=true; palace.add(b);
+            const nC=8,cG=new THREE.CylinderGeometry(0.8,0.8,h,24),s=w*0.85/(nC-1); for(let i=0;i<nC;i++){ const c=new THREE.Mesh(cG,m);c.position.set(-(w*0.85/2)+(i*s),h/2,d/2+1);c.castShadow=true;palace.add(c);}
+            const r=new THREE.Mesh(new THREE.BoxGeometry(w+1,1.5,d+1),m); r.position.y=h+0.75; palace.add(r);
+            const pS=new THREE.Shape().moveTo(-w/2.2,0).lineTo(w/2.2,0).lineTo(0,5).lineTo(-w/2.2,0);
+            const p=new THREE.Mesh(new THREE.ExtrudeGeometry(pS,{depth:0.8,bevelEnabled:false}),m); p.position.set(0,h+1.5,d/2+0.5); p.castShadow=true; palace.add(p);
+            palace.position.set(0,-0.25,-40); palace.userData={isClickable:true,type:'politics'}; scene.add(palace); allInteractiveObjects.push(palace);
+        }
+        
+        function createBench() {
+            bench=new THREE.Group(); const wd=new THREE.MeshStandardMaterial({color:0x8B4513,roughness:0.8}); const mt=new THREE.MeshStandardMaterial({color:0x555555,roughness:0.5});
+            const w=12,h=2.2,d=2,st=0.15,sw=0.4; const lg=new THREE.BoxGeometry(st*2,h,st*2); [-w/2+0.5,w/2-0.5].forEach(x=>[-d/2+0.1,d/2-0.1].forEach(z=>{const l=new THREE.Mesh(lg,mt);l.position.set(x,h/2,z);l.castShadow=true;bench.add(l);}));
+            const ssg=new THREE.BoxGeometry(w,st,sw), ns=8,g=(d-(ns*sw))/(ns-1); for(let i=0;i<ns;i++){const s=new THREE.Mesh(ssg,wd);s.position.y=h;s.position.z=-d/2+sw/2+i*(sw+g);s.castShadow=true;bench.add(s);}
+            const b=new THREE.Group();bench.add(b);b.position.set(0,h+0.1,-d/2+0.1);b.rotation.x=-Math.PI/12; const nb=5,bsg=new THREE.BoxGeometry(w,sw*0.8,st); for(let i=0;i<nb;i++){const s=new THREE.Mesh(bsg,wd);s.position.y=(sw*0.8+g)*i+(sw*0.8)/2;s.castShadow=true;b.add(s);}
+            bench.position.set(60,0,40); bench.rotation.y=-Math.PI/2; bench.userData={isClickable:true,type:'economy'}; scene.add(bench); allInteractiveObjects.push(bench);
+        }
+        
+        function createMountain() {
+            mountain=new THREE.Group(); const rM=new THREE.MeshStandardMaterial({color:0x7d7d7d,roughness:0.8}); const sM=new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.6});
+            function cP(h,r,x,z){const p=new THREE.Mesh(new THREE.ConeGeometry(r,h,8),rM);p.position.set(x,h/2-2,z);p.castShadow=true;const s=new THREE.Mesh(new THREE.ConeGeometry(r*0.4,h*0.3,8),sM);s.position.y=h/2-(h*0.3)/2;p.add(s);return p;}
+            mountain.add(cP(25,12,0,0)); mountain.add(cP(18,8,-10,6)); mountain.add(cP(15,7,8,-5));
+            mountain.position.set(-90,2,40); mountain.rotation.y=Math.PI/9; mountain.userData={isClickable:true,type:'geography'}; scene.add(mountain); allInteractiveObjects.push(mountain);
+        }
+
+        function createCultureGroup() {
+            cultureGroup=new THREE.Group(); const hG=new THREE.SphereGeometry(0.5,16,16);
+            function cP(x,z,c,h){ const p=new THREE.Group(); const bG=new THREE.CylinderGeometry(0.4,0.45,h,16); const hd=new THREE.Mesh(hG,new THREE.MeshStandardMaterial({color:0xffccaa})); const bd=new THREE.Mesh(bG,new THREE.MeshStandardMaterial({color:c})); bd.position.y=h/2;bd.castShadow=true; hd.position.y=h+0.4; p.add(bd,hd); p.position.set(x,0,z); return p; }
+            cultureGroup.add(cP(0,0,0xd9534f,2.5)); cultureGroup.add(cP(2,1,0x5cb85c,3.0)); cultureGroup.add(cP(-1.5,1.5,0x0275d8,2.8));
+            cultureGroup.children.forEach(p=>{gsap.to(p.position,{y:p.position.y+0.4,duration:1+Math.random()*0.5,ease:"sine.inOut",repeat:-1,yoyo:true,delay:Math.random()*0.5});});
+            cultureGroup.position.set(-40,0,70); cultureGroup.userData={isClickable:true,type:'culture'}; scene.add(cultureGroup); allInteractiveObjects.push(cultureGroup);
+        }
+
+        function createLocationMap() {
+            locationMap=new THREE.Group(); const cS=new THREE.Shape(); cS.moveTo(2,10);cS.lineTo(10,5);cS.lineTo(12,-8);cS.lineTo(8,-15);cS.lineTo(2,-20);cS.lineTo(0,-18);cS.lineTo(-1,-10);cS.lineTo(-3,0);cS.lineTo(-1,8);cS.lineTo(2,10);
+            const eS={depth:2,bevelEnabled:true,bevelThickness:0.5,bevelSize:0.5,bevelSegments:2};
+            const cM=new THREE.Mesh(new THREE.ExtrudeGeometry(cS,eS),new THREE.MeshStandardMaterial({color:0x2E7D32,roughness:0.8}));
+            cM.castShadow=true; cM.rotation.x=-Math.PI/2; cM.position.y=1; locationMap.add(cM);
+            const chM=new THREE.Mesh(new THREE.BoxGeometry(1.5,18,1),new THREE.MeshStandardMaterial({color:0xD32F2F}));
+            chM.position.set(-0.5,2.5,-6); chM.rotation.z=-0.15; chM.castShadow=true; locationMap.add(chM);
+            locationMap.position.set(40,0,70); locationMap.scale.set(1.5,1.5,1.5); locationMap.userData={isClickable:true,type:'location'}; scene.add(locationMap); allInteractiveObjects.push(locationMap);
+        }
+
+        // --- Gerenciamento de Modos ---
+        function startSpectatorMode() {
+            currentMode = 'spectator';
+            document.getElementById('start-menu-overlay').classList.add('hidden');
+            renderer.domElement.style.cursor = 'grab';
+            
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.dampingFactor = 0.05; controls.screenSpacePanning = false;
+            controls.minDistance = 20; controls.maxDistance = 180; controls.maxPolarAngle = Math.PI / 2.1;
+            controls.target.set(0, 5, 0);
+
+            renderer.domElement.addEventListener('pointerdown', onPointerDown);
+            renderer.domElement.addEventListener('pointerup', onPointerUp);
+        }
+        
+        function startPersonMode() {
+            currentMode = 'person';
+            document.getElementById('start-menu-overlay').classList.add('hidden');
+            document.getElementById('reticle').style.display = 'block';
+            renderer.domElement.requestPointerLock(); 
+
+            if(controls) controls.dispose();
+            
+            // <-- ALTERAÇÃO AQUI: Posição inicial melhorada para o Modo Pessoa -->
+            // Em vez de começar longe (z=80), o jogador começa perto da ação.
+            camera.position.set(15, PLAYER_EYE_HEIGHT, 25); 
+            // Começa já virado para o palácio (-Z) para uma melhor orientação.
+            camera.rotation.set(0, Math.PI, 0); 
+
+            document.addEventListener('mousemove', onMouseMovePersonMode);
+            document.addEventListener('pointerlockchange', onPointerLockChange);
+            window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
+            window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+        }
+        
+        // --- Lógica de Interação ---
+        
+        // Modo Espectador
+        function onPointerDown(e){pointerDownPos.set(e.clientX,e.clientY);}
+        function onPointerUp(e){if(pointerDownPos.distanceTo(new THREE.Vector2(e.clientX,e.clientY))<10){handleInteractionClick(e);}}
+        
+        function handleInteractionClick(event) {
+            if (panelIsOpen) return;
+            pointer.x=(event.clientX/window.innerWidth)*2-1; pointer.y=-(event.clientY/window.innerHeight)*2+1;
+            raycaster.setFromCamera(pointer,camera);
+            const intersects=raycaster.intersectObjects(allInteractiveObjects,true);
+            if(intersects.length > 0) {
+                let obj = intersects[0].object;
+                while(obj && !obj.userData.isClickable) obj = obj.parent;
+                if(obj) zoomAndShowPanel(obj, obj.userData.type);
+            }
+        }
+        
+        // <-- ALTERAÇÃO AQUI: Lógica de zoom da câmera refeita para ser mais robusta e suave -->
+        function zoomAndShowPanel(targetObject, panelType) {
+            panelIsOpen = true;
+            controls.enabled = false;
+            const targetPosition = new THREE.Vector3();
+            targetObject.getWorldPosition(targetPosition);
+            
+            // Lógica de câmera dinâmica: preserva o ângulo de visão do usuário.
+            const ZOOM_DISTANCE = 70; // Distância desejada do objeto.
+            const newTarget = new THREE.Vector3(targetPosition.x, targetPosition.y + 5, targetPosition.z); // O ponto para onde vamos orbitar
+
+            // Vetor da câmera atual para o novo alvo.
+            const direction = new THREE.Vector3().subVectors(camera.position, newTarget);
+            // Normaliza e escala para a distância de zoom desejada.
+            direction.normalize().multiplyScalar(ZOOM_DISTANCE);
+            
+            // A nova posição da câmera é calculada a partir do alvo e do vetor de direção.
+            const zoomPosition = new THREE.Vector3().addVectors(newTarget, direction);
+            
+            gsap.timeline()
+                .to(controls.target, {
+                    duration: 1.5, 
+                    x: newTarget.x, 
+                    y: newTarget.y, 
+                    z: newTarget.z, 
+                    ease: "power2.inOut"
+                })
+                .to(camera.position, {
+                    duration: 1.5, 
+                    x: zoomPosition.x, 
+                    y: zoomPosition.y, 
+                    z: zoomPosition.z, 
+                    ease: "power2.inOut"
+                }, "-=1.5") // Anima ao mesmo tempo que o alvo
+                .eventCallback("onComplete", () => {
+                    document.getElementById(`${panelType}-panel`).classList.remove('hidden');
+                });
+        }
+        
+        function hidePanelsAndZoomOut() {
+            document.querySelectorAll('.info-panel').forEach(p=>p.classList.add('hidden'));
+            panelIsOpen = false;
+            
+            if (currentMode === 'spectator') {
+                 gsap.timeline()
+                     .to(controls.target,{duration:2,x:0,y:5,z:0,ease:"power3.inOut"})
+                     .to(camera.position,{duration:2,x:originalCameraPos.x,y:originalCameraPos.y,z:originalCameraPos.z,ease:"power3.inOut"},"-=2.0")
+                     .eventCallback("onComplete",()=>{controls.enabled=true;});
+            } else if (currentMode === 'person') {
+                 renderer.domElement.requestPointerLock(); // Re-bloqueia o cursor
+            }
+        }
+        
+        // Modo Pessoa (1a Pessoa)
+        function onMouseMovePersonMode(event) {
+            if (document.pointerLockElement === renderer.domElement) {
+                camera.rotation.y -= event.movementX * 0.002;
+                camera.rotation.x -= event.movementY * 0.002;
+                // Limita a rotação vertical (olhar para cima/baixo)
+                camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+            }
+        }
+        
+        function onPointerLockChange() {
+            if (document.pointerLockElement === renderer.domElement) {
+                renderer.domElement.style.cursor = 'none';
+            } else {
+                renderer.domElement.style.cursor = 'auto';
+                keys = {}; // Limpa as teclas para parar movimento ao sair do foco
+            }
+        }
+
+        function updateFirstPersonController(deltaTime) {
+            if (panelIsOpen) return;
+            
+            // --- Física ---
+            playerVelocity.y -= GRAVITY * deltaTime;
+            camera.position.y += playerVelocity.y * deltaTime;
+            
+            if (camera.position.y < PLAYER_EYE_HEIGHT) {
+                camera.position.y = PLAYER_EYE_HEIGHT;
+                playerVelocity.y = 0;
+                onGround = true;
+            } else {
+                onGround = false;
+            }
+
+            // --- Controles de Movimento (WASD) ---
+            const moveSpeed = PLAYER_SPEED * deltaTime;
+            const moveDirection = new THREE.Vector3();
+            
+            if (keys['w']) moveDirection.z = -1;
+            if (keys['s']) moveDirection.z = 1;
+            if (keys['a']) moveDirection.x = -1;
+            if (keys['d']) moveDirection.x = 1;
+            
+            if(moveDirection.length() > 0) {
+                moveDirection.normalize();
+                // Aplica a rotação da câmera à direção de movimento
+                moveDirection.applyEuler(camera.rotation);
+                camera.position.addScaledVector(moveDirection, moveSpeed);
+            }
+
+            // --- Pulo ---
+            if (keys[' '] && onGround) {
+                playerVelocity.y = JUMP_VELOCITY;
+            }
+            
+            // --- Interação por Mira (Raycasting) ---
+            const prompt = document.getElementById('interaction-prompt');
+            raycaster.setFromCamera({ x: 0, y: 0 }, camera); // Mira no centro da tela
+            const intersects = raycaster.intersectObjects(allInteractiveObjects, true);
+            
+            let canInteractWith = null;
+            if(intersects.length > 0 && intersects[0].distance < INTERACTION_DISTANCE) {
+                let obj = intersects[0].object;
+                while(obj && !obj.userData.isClickable) obj = obj.parent;
+                if(obj) canInteractWith = obj.userData;
+            }
+
+            if (canInteractWith) {
+                prompt.classList.add('visible');
+                if (keys['e']) {
+                    keys['e'] = false; // Evita múltiplas aberturas
+                    panelIsOpen = true;
+                    document.exitPointerLock(); // Libera o cursor para o painel
+                    document.getElementById(`${canInteractWith.type}-panel`).classList.remove('hidden');
+                }
+            } else {
+                 prompt.classList.remove('visible');
+            }
+        }
+
+        // --- Loop Principal e Eventos ---
+        function animate(){
+            requestAnimationFrame(animate);
+            const deltaTime = clock.getDelta();
+            
+            const time = Date.now() * 0.0002;
+            directionalLight.position.x = Math.sin(time) * 60;
+            directionalLight.position.z = Math.cos(time) * 50;
+
+            if (currentMode === 'spectator' && controls) {
+                controls.update();
+            } else if (currentMode === 'person') {
+                updateFirstPersonController(deltaTime);
+            }
+
+            renderer.render(scene,camera);
+        }
+        
+        function onWindowResize(){
+            camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight);
+        }
+
+        function setupEventListeners() {
+            document.getElementById('spectator-mode-btn').addEventListener('click', startSpectatorMode);
+            document.getElementById('person-mode-btn').addEventListener('click', startPersonMode);
+            window.addEventListener('resize', onWindowResize);
+
+            let cs=0; const s=document.querySelectorAll('#politics-panel .slide'),ts=s.length; function ss(i){s.forEach((sl,ix)=>sl.classList.toggle('active',ix===i));cs=i;}
+            document.getElementById('next-btn').addEventListener('click',()=>{ss((cs+1)%ts);});
+            document.getElementById('prev-btn').addEventListener('click',()=>{ss((cs-1+ts)%ts);});
+            
+            document.querySelectorAll('.close-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const panelId = btn.id.replace('close-', '').replace('-btn', '');
+                    hidePanelsAndZoomOut();
+                    if(panelId === 'politics') setTimeout(()=>ss(0),500); // Reset slideshow
+                });
+            });
+
+            ss(0);
+        }
+        
+        init();
+    </script>
+</body>
+</html>
